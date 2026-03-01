@@ -1,0 +1,5 @@
+{
+  "name": "NORMAGATE NFe",
+  "description": "Sistema de controle de entrada e saída de Notas Fiscais (NFe) para Normatel.",
+  "requestFramePermissions": []
+}
