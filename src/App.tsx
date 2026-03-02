@@ -182,21 +182,57 @@ export default function App() {
     if (!trimmed) return;
     if (batchKeys.some(item => item.key === trimmed)) {
       setError('Esta nota já está na lista do lote.');
+      setErrorType('other');
       setShowErrorModal(true);
       return;
     }
 
     try {
+      // Regra de Ouro: Validação de Ciclo no Firestore
+      const lastMoveQuery = query(
+        collection(db, 'normagate_movimentacoes'),
+        where('nfe_key', '==', trimmed),
+        orderBy('timestamp', 'desc'),
+        limit(1)
+      );
+      const lastMoveSnapshot = await getDocs(lastMoveQuery);
+      
+      if (!lastMoveSnapshot.empty) {
+        const lastMove = lastMoveSnapshot.docs[0].data();
+        
+        if (activeTab === 'checkout') {
+          if (lastMove.operation_type === 'Saída' && lastMove.status === 'Concluída') {
+            // Exceção: Permita se o último registro for 'Retorno ao CD'
+            if (lastMove.status !== 'Retorno ao CD') {
+              setError(`NF já registrada em Saída anterior sem fechamento de ciclo.`);
+              setErrorType('other');
+              setShowErrorModal(true);
+              return;
+            }
+          }
+        } else if (activeTab === 'checkin') {
+          if (lastMove.operation_type === 'Entrada' && lastMove.status === 'Concluída') {
+            // Exceção: Permita se o último registro for 'Saída por Recusa'
+            if (lastMove.status !== 'Saída por Recusa') {
+              setError(`NF já registrada em Entrada anterior sem fechamento de ciclo.`);
+              setErrorType('other');
+              setShowErrorModal(true);
+              return;
+            }
+          }
+        }
+      }
+
       const q = query(collection(db, 'normagate_movimentacoes'), where('nfe_key', '==', trimmed));
       const snapshot = await getCountFromServer(q);
       setBatchKeys([{ key: trimmed, count: snapshot.data().count || 0 }, ...batchKeys]);
+      setCurrentScan('');
+      setError(null);
     } catch (err) {
-      console.error('Error counting NF', err);
+      console.error('Error in addKeyToBatch', err);
       setBatchKeys([{ key: trimmed, count: 0 }, ...batchKeys]);
+      setCurrentScan('');
     }
-
-    setCurrentScan('');
-    setError(null);
   };
 
   const removeKeyFromBatch = (index: number) => {
