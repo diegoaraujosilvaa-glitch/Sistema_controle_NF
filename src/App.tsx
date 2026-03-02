@@ -407,6 +407,11 @@ export default function App() {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
                           {m.vehicle_plate} {m.vehicle_model ? `(${m.vehicle_model})` : ''} {m.driver_name ? `• ${m.driver_name}` : ''} • {new Date(m.timestamp).toLocaleDateString()} {new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </p>
+                        {m.reason && (
+                          <p className="text-[10px] font-black text-rose-600 uppercase mt-1 bg-rose-50 px-2 py-0.5 rounded-md inline-block">
+                            MOTIVO: {m.reason}
+                          </p>
+                        )}
                       </div>
                       <div className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${m.operation_type === 'Saída' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
                         {m.operation_type}
