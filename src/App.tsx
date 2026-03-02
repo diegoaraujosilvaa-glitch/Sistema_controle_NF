@@ -54,6 +54,8 @@ export default function App() {
   const [formData, setFormData] = useState({
     nfe_key: '',
     vehicle_plate: '',
+    vehicle_model: '',
+    driver_name: '',
     status: 'Concluída' as OperationStatus,
     reason: ''
   });
@@ -89,6 +91,8 @@ export default function App() {
           status: d.status,
           reason: d.reason,
           vehicle_plate: d.vehicle_plate,
+          vehicle_model: d.vehicle_model,
+          driver_name: d.driver_name,
           timestamp: d.timestamp?.toDate?.()?.toISOString() || new Date().toISOString()
         };
       }) as Movement[];
@@ -282,6 +286,8 @@ export default function App() {
           status: formData.status,
           reason: formData.reason || null,
           vehicle_plate: formData.vehicle_plate.toUpperCase(),
+          vehicle_model: formData.vehicle_model || null,
+          driver_name: formData.driver_name || null,
           timestamp: Timestamp.now()
         });
       }
@@ -289,7 +295,7 @@ export default function App() {
       await batch.commit();
 
       setSuccess(`${nfe_keys.length} notas processadas com sucesso!`);
-      setFormData({ nfe_key: '', vehicle_plate: '', status: 'Concluída', reason: '' });
+      setFormData({ nfe_key: '', vehicle_plate: '', vehicle_model: '', driver_name: '', status: 'Concluída', reason: '' });
       setBatchKeys([]);
       setPlateQuery('');
       fetchMovements();
@@ -309,6 +315,8 @@ export default function App() {
   const filteredMovements = movements.filter(m => 
     m.nfe_key.toLowerCase().includes(historySearch.toLowerCase()) ||
     m.vehicle_plate.toLowerCase().includes(historySearch.toLowerCase()) ||
+    (m.vehicle_model && m.vehicle_model.toLowerCase().includes(historySearch.toLowerCase())) ||
+    (m.driver_name && m.driver_name.toLowerCase().includes(historySearch.toLowerCase())) ||
     (m.reason && m.reason.toLowerCase().includes(historySearch.toLowerCase()))
   );
 
@@ -397,7 +405,7 @@ export default function App() {
                       <div>
                         <p className="font-black text-slate-900">{getNFNumber(m.nfe_key)}</p>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                          {m.vehicle_plate} • {new Date(m.timestamp).toLocaleDateString()} {new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          {m.vehicle_plate} {m.vehicle_model ? `(${m.vehicle_model})` : ''} {m.driver_name ? `• ${m.driver_name}` : ''} • {new Date(m.timestamp).toLocaleDateString()} {new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </p>
                       </div>
                       <div className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${m.operation_type === 'Saída' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
@@ -475,7 +483,13 @@ export default function App() {
                       onChange={(e) => {
                         const val = e.target.value.toUpperCase();
                         setPlateQuery(val);
-                        setFormData({ ...formData, vehicle_plate: val });
+                        const found = vehicles.find(v => v.plate === val);
+                        setFormData({ 
+                          ...formData, 
+                          vehicle_plate: val,
+                          vehicle_model: found?.model || '',
+                          driver_name: found?.driver_name || ''
+                        });
                         setShowPlateSuggestions(true);
                       }}
                       onFocus={() => setShowPlateSuggestions(true)}
@@ -497,7 +511,12 @@ export default function App() {
                             className="w-full p-4 text-left hover:bg-brand-50 flex items-center justify-between border-b border-slate-50 last:border-0"
                             onClick={() => {
                               setPlateQuery(v.plate);
-                              setFormData({ ...formData, vehicle_plate: v.plate });
+                              setFormData({ 
+                                ...formData, 
+                                vehicle_plate: v.plate,
+                                vehicle_model: v.model || '',
+                                driver_name: v.driver_name || ''
+                              });
                               setShowPlateSuggestions(false);
                             }}
                           >
@@ -684,8 +703,15 @@ export default function App() {
                     <button 
                       onClick={() => {
                         if (manualPlate) {
-                          setFormData({ ...formData, vehicle_plate: manualPlate });
-                          setPlateQuery(manualPlate);
+                          const val = manualPlate.toUpperCase();
+                          const found = vehicles.find(v => v.plate === val);
+                          setFormData({ 
+                            ...formData, 
+                            vehicle_plate: val,
+                            vehicle_model: found?.model || '',
+                            driver_name: found?.driver_name || ''
+                          });
+                          setPlateQuery(val);
                           setShowErrorModal(false);
                           setManualPlate('');
                         }

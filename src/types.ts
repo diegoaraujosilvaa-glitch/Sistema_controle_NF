@@ -11,6 +11,8 @@ export interface Movement {
   status: 'Concluída' | 'Retorno ao CD' | 'Recusada' | 'Saída por Recusa';
   reason?: string;
   vehicle_plate: string;
+  vehicle_model?: string;
+  driver_name?: string;
   timestamp: string;
 }
 
