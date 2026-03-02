@@ -49,6 +49,14 @@ export default function App() {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [manualPlate, setManualPlate] = useState('');
   const [historySearch, setHistorySearch] = useState('');
+  const getLocalDateString = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const [historyDate, setHistoryDate] = useState(getLocalDateString(new Date()));
 
   // Form State
   const [formData, setFormData] = useState({
@@ -80,7 +88,8 @@ export default function App() {
 
   const fetchMovements = async () => {
     try {
-      const q = query(collection(db, 'normagate_movimentacoes'), orderBy('timestamp', 'desc'), limit(50));
+      // Fetch more to allow better filtering
+      const q = query(collection(db, 'normagate_movimentacoes'), orderBy('timestamp', 'desc'), limit(200));
       const querySnapshot = await getDocs(q);
       const data = querySnapshot.docs.map(doc => {
         const d = doc.data();
@@ -312,13 +321,21 @@ export default function App() {
     (v.model && v.model.toLowerCase().includes(plateQuery.toLowerCase()))
   );
 
-  const filteredMovements = movements.filter(m => 
-    m.nfe_key.toLowerCase().includes(historySearch.toLowerCase()) ||
-    m.vehicle_plate.toLowerCase().includes(historySearch.toLowerCase()) ||
-    (m.vehicle_model && m.vehicle_model.toLowerCase().includes(historySearch.toLowerCase())) ||
-    (m.driver_name && m.driver_name.toLowerCase().includes(historySearch.toLowerCase())) ||
-    (m.reason && m.reason.toLowerCase().includes(historySearch.toLowerCase()))
-  );
+  const filteredMovements = movements.filter(m => {
+    const matchesSearch = 
+      m.nfe_key.toLowerCase().includes(historySearch.toLowerCase()) ||
+      m.vehicle_plate.toLowerCase().includes(historySearch.toLowerCase()) ||
+      (m.vehicle_model && m.vehicle_model.toLowerCase().includes(historySearch.toLowerCase())) ||
+      (m.driver_name && m.driver_name.toLowerCase().includes(historySearch.toLowerCase())) ||
+      (m.reason && m.reason.toLowerCase().includes(historySearch.toLowerCase()));
+
+    if (historySearch.trim() !== '') {
+      return matchesSearch;
+    }
+
+    const moveDate = getLocalDateString(new Date(m.timestamp));
+    return moveDate === historyDate;
+  });
 
   const getNFNumber = (key: string) => {
     if (key.length === 44) {
@@ -386,6 +403,15 @@ export default function App() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between px-1">
                   <h2 className="text-sm font-bold text-slate-500 uppercase">Histórico Recente</h2>
+                  <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                    <FileText size={14} className="text-slate-400" />
+                    <input 
+                      type="date" 
+                      className="bg-transparent text-[10px] font-black uppercase outline-none text-slate-600"
+                      value={historyDate}
+                      onChange={(e) => setHistoryDate(e.target.value)}
+                    />
+                  </div>
                 </div>
                 
                 <div className="relative group">
