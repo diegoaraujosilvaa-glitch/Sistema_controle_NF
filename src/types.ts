@@ -5,7 +5,7 @@ export interface Vehicle {
 }
 
 export interface Movement {
-  id: number;
+  id: number | string;
   nfe_key: string;
   operation_type: 'Entrada' | 'Saída';
   status: 'Concluída' | 'Retorno ao CD' | 'Recusada' | 'Saída por Recusa';
