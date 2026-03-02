@@ -135,6 +135,48 @@ export default function App() {
     }
   };
 
+  const seedVehicles = async () => {
+    const initialVehicles = [
+      { plate: 'PNZ4406', model: 'MB08' },
+      { plate: 'ORZ0465', model: 'MB09' },
+      { plate: 'HWL7403', model: 'MB18' },
+      { plate: 'HXY7945', model: 'MB19' },
+      { plate: 'OSA6711', model: 'MB20' },
+      { plate: 'OSL9998', model: 'MB21' },
+      { plate: 'PMH9219', model: 'MB23' },
+      { plate: 'OCF9681', model: 'MB24' },
+      { plate: 'OSU7145', model: 'MB49' },
+      { plate: 'POW9495', model: 'MB51' },
+      { plate: 'PNR2C84', model: 'MB55' },
+      { plate: 'POR0C93', model: 'MB56' },
+      { plate: 'POZ5F66', model: 'MB59' },
+      { plate: 'OIM0086', model: 'MB60' },
+      { plate: 'SBK9I25', model: 'MB62' },
+      { plate: 'SBV7I66', model: 'MB63' },
+      { plate: 'SBD9F47', model: 'MB65' },
+      { plate: 'SAX9B97', model: 'MB66' },
+      { plate: 'SBT6A94', model: 'MB67' },
+      { plate: 'NIU2I54', model: 'MB69' },
+      { plate: 'THN6F19', model: 'MB71' },
+      { plate: 'PNY8C03', model: 'MB73' }
+    ];
+
+    try {
+      const batch = writeBatch(db);
+      initialVehicles.forEach(v => {
+        const docRef = doc(db, 'normagate_veiculos', v.plate);
+        batch.set(docRef, { model: v.model, driver_name: '' });
+      });
+      await batch.commit();
+      fetchVehicles();
+      setSuccess('Carga inicial de veículos realizada!');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Error seeding vehicles', err);
+      setError('Erro ao realizar carga inicial.');
+    }
+  };
+
   const addKeyToBatch = async (key: string) => {
     const trimmed = key.trim();
     if (!trimmed) return;
@@ -358,6 +400,9 @@ export default function App() {
                   />
                   <button onClick={handleSaveVehicle} className="w-full bg-brand-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-brand-200 active:scale-95 transition-all">
                     SALVAR VEÍCULO
+                  </button>
+                  <button onClick={seedVehicles} className="w-full bg-slate-200 text-slate-600 p-3 rounded-2xl font-bold text-xs uppercase active:scale-95 transition-all">
+                    Realizar Carga Inicial (Lista Completa)
                   </button>
                 </div>
               </div>
