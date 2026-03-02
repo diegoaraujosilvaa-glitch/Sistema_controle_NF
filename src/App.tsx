@@ -39,6 +39,10 @@ import {
 } from 'firebase/firestore';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState(false);
+
   const [movements, setMovements] = useState<Movement[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,10 +85,84 @@ export default function App() {
 
   const scanInputRef = useRef<HTMLInputElement>(null);
 
+  const playSound = (type: 'success' | 'error' | 'scan' | 'attention') => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      
+      const ctx = new AudioContextClass();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      const now = ctx.currentTime;
+      
+      if (type === 'scan') {
+        // Short high-pitched beep
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      } else if (type === 'error' || type === 'attention') {
+        // Lower-pitched, longer "buzz"
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(150, now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.1, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      } else if (type === 'success') {
+        // Two rising notes
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now); // C5
+        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.2); // E5
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.start(now);
+        osc.stop(now + 0.5);
+      }
+      
+      // Close context after sound finishes to save resources
+      setTimeout(() => ctx.close(), 1000);
+    } catch (err) {
+      // Silently fail if Web Audio is not supported or blocked
+    }
+  };
+
+  useEffect(() => {
+    if (showErrorModal) {
+      playSound('attention');
+    }
+  }, [showErrorModal]);
+
   useEffect(() => {
     fetchMovements();
     fetchVehicles();
   }, []);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginForm.username.toUpperCase() === 'PORTARIA' && loginForm.password === 'portaria.av') {
+      setIsAuthenticated(true);
+      setLoginError(false);
+      playSound('success');
+    } else {
+      setLoginError(true);
+      playSound('error');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setLoginForm({ username: '', password: '' });
+  };
 
   const fetchMovements = async () => {
     try {
@@ -197,6 +275,7 @@ export default function App() {
       setError('Esta nota já está na lista do lote.');
       setErrorType('other');
       setShowErrorModal(true);
+      setCurrentScan('');
       return;
     }
 
@@ -220,6 +299,7 @@ export default function App() {
               setError(`NF já registrada em Saída anterior sem fechamento de ciclo.`);
               setErrorType('other');
               setShowErrorModal(true);
+              setCurrentScan('');
               return;
             }
           }
@@ -230,6 +310,7 @@ export default function App() {
               setError(`NF já registrada em Entrada anterior sem fechamento de ciclo.`);
               setErrorType('other');
               setShowErrorModal(true);
+              setCurrentScan('');
               return;
             }
           }
@@ -241,10 +322,12 @@ export default function App() {
       setBatchKeys([{ key: trimmed, count: snapshot.data().count || 0 }, ...batchKeys]);
       setCurrentScan('');
       setError(null);
+      playSound('scan');
     } catch (err) {
       console.error('Error in addKeyToBatch', err);
       setBatchKeys([{ key: trimmed, count: 0 }, ...batchKeys]);
       setCurrentScan('');
+      playSound('scan');
     }
   };
 
@@ -304,6 +387,7 @@ export default function App() {
       await batch.commit();
 
       setSuccess(`${nfe_keys.length} notas processadas com sucesso!`);
+      playSound('success');
       setFormData({ nfe_key: '', vehicle_plate: '', vehicle_model: '', driver_name: '', status: 'Concluída', reason: '' });
       setBatchKeys([]);
       setPlateQuery('');
@@ -344,6 +428,76 @@ export default function App() {
     return key;
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-sm bg-white rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden"
+        >
+          <div className="bg-brand-600 p-10 text-white flex flex-col items-center space-y-4">
+            <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center shadow-inner">
+              <Truck size={48} />
+            </div>
+            <div className="text-center">
+              <h1 className="text-2xl font-black tracking-tight">NORMAGATE NFe</h1>
+              <p className="text-brand-100 text-xs font-bold uppercase tracking-widest mt-1">Controle de Portaria</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleLogin} className="p-8 space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Usuário</label>
+                <input 
+                  type="text" 
+                  required
+                  className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-brand-600 focus:bg-white outline-none font-bold transition-all"
+                  placeholder="DIGITE O USUÁRIO"
+                  value={loginForm.username}
+                  onChange={e => setLoginForm({ ...loginForm, username: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha</label>
+                <input 
+                  type="password" 
+                  required
+                  className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-brand-600 focus:bg-white outline-none font-bold transition-all"
+                  placeholder="••••••••"
+                  value={loginForm.password}
+                  onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {loginError && (
+              <motion.p 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="text-rose-600 text-[10px] font-black uppercase text-center bg-rose-50 p-2 rounded-lg"
+              >
+                Usuário ou senha incorretos
+              </motion.p>
+            )}
+
+            <button 
+              type="submit"
+              className="w-full py-5 bg-brand-600 text-white rounded-2xl font-black text-lg uppercase tracking-widest shadow-xl shadow-brand-100 active:scale-[0.98] transition-all"
+            >
+              Acessar Sistema
+            </button>
+          </form>
+          
+          <div className="p-6 bg-slate-50 text-center border-t border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Normatel Engenharia • 2024</p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white flex flex-col font-sans text-slate-900 overflow-x-hidden">
       {/* Header Compacto - Material Design 3 Style */}
@@ -363,6 +517,9 @@ export default function App() {
             </button>
             <button onClick={() => setActiveTab('vehicles')} className={`p-2 rounded-full ${activeTab === 'vehicles' ? 'bg-brand-50 text-brand-600' : 'text-slate-400'}`}>
               <Settings size={20} />
+            </button>
+            <button onClick={handleLogout} className="p-2 rounded-full text-slate-400 hover:text-rose-600 transition-colors">
+              <X size={20} />
             </button>
           </div>
         </div>
