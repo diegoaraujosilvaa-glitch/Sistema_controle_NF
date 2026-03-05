@@ -53,6 +53,9 @@ export default function App() {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [manualPlate, setManualPlate] = useState('');
   const [historySearch, setHistorySearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 100;
+
   const getLocalDateString = (date: Date) => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -143,9 +146,21 @@ export default function App() {
   }, [showErrorModal]);
 
   useEffect(() => {
-    fetchMovements();
-    fetchVehicles();
-  }, []);
+    if (isAuthenticated) {
+      fetchMovements();
+      fetchVehicles();
+    }
+  }, [isAuthenticated, historyDate]);
+
+  // Debounce search to avoid too many Firestore reads
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isAuthenticated && historySearch.trim() !== '') {
+        fetchMovements();
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [historySearch, isAuthenticated]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,15 +180,56 @@ export default function App() {
   };
 
   const fetchMovements = async () => {
+    setLoading(true);
     try {
-      // Fetch more to allow better filtering
-      const q = query(collection(db, 'normagate_movimentacoes'), orderBy('timestamp', 'desc'), limit(200));
+      let q;
+      const search = historySearch.trim();
+      if (search !== '') {
+        if (search.length === 44 && /^\d+$/.test(search)) {
+          // Exact NFe Key search
+          q = query(
+            collection(db, 'normagate_movimentacoes'), 
+            where('nfe_key', '==', search),
+            orderBy('timestamp', 'desc')
+          );
+        } else if (/^\d+$/.test(search) && search.length <= 9) {
+          // Exact NF Number search (using the new field)
+          q = query(
+            collection(db, 'normagate_movimentacoes'), 
+            where('nf_number', '==', search),
+            orderBy('timestamp', 'desc')
+          );
+        } else {
+          // Global search (increased limit to 1000 for better reach)
+          q = query(
+            collection(db, 'normagate_movimentacoes'), 
+            orderBy('timestamp', 'desc'), 
+            limit(1000)
+          );
+        }
+      } else {
+        // Specific date search
+        // We need to cover the full day from 00:00:00 to 23:59:59
+        // Using the date string directly to avoid timezone shifts
+        const [year, month, day] = historyDate.split('-').map(Number);
+        const start = new Date(year, month - 1, day, 0, 0, 0);
+        const end = new Date(year, month - 1, day, 23, 59, 59);
+        
+        q = query(
+          collection(db, 'normagate_movimentacoes'),
+          where('timestamp', '>=', Timestamp.fromDate(start)),
+          where('timestamp', '<=', Timestamp.fromDate(end)),
+          orderBy('timestamp', 'desc')
+        );
+      }
+      
       const querySnapshot = await getDocs(q);
       const data = querySnapshot.docs.map(doc => {
-        const d = doc.data();
+        const d = doc.data() as any;
         return {
           id: doc.id,
           nfe_key: d.nfe_key,
+          nf_number: d.nf_number,
           operation_type: d.operation_type,
           status: d.status,
           reason: d.reason,
@@ -184,6 +240,7 @@ export default function App() {
         };
       }) as Movement[];
       setMovements(data);
+      setCurrentPage(1);
     } catch (err) {
       console.error('Failed to fetch movements', err);
     } finally {
@@ -371,9 +428,11 @@ export default function App() {
       // But here we'll just process them as requested.
       
       for (const key of nfe_keys) {
+        const nf_number = key.length === 44 ? key.slice(25, 34).replace(/^0+/, '') : key;
         const newDocRef = doc(movementsCol);
         batch.set(newDocRef, {
           nfe_key: key,
+          nf_number: nf_number,
           operation_type: type,
           status: formData.status,
           reason: formData.reason || null,
@@ -406,12 +465,18 @@ export default function App() {
   );
 
   const filteredMovements = movements.filter(m => {
+    const search = historySearch.toLowerCase();
+    const formattedNF = getNFNumber(m.nfe_key).toLowerCase();
+    const rawNF = formattedNF.replace('nf ', '');
+
     const matchesSearch = 
-      m.nfe_key.toLowerCase().includes(historySearch.toLowerCase()) ||
-      m.vehicle_plate.toLowerCase().includes(historySearch.toLowerCase()) ||
-      (m.vehicle_model && m.vehicle_model.toLowerCase().includes(historySearch.toLowerCase())) ||
-      (m.driver_name && m.driver_name.toLowerCase().includes(historySearch.toLowerCase())) ||
-      (m.reason && m.reason.toLowerCase().includes(historySearch.toLowerCase()));
+      m.nfe_key.toLowerCase().includes(search) ||
+      formattedNF.includes(search) ||
+      rawNF.includes(search) ||
+      m.vehicle_plate.toLowerCase().includes(search) ||
+      (m.vehicle_model && m.vehicle_model.toLowerCase().includes(search)) ||
+      (m.driver_name && m.driver_name.toLowerCase().includes(search)) ||
+      (m.reason && m.reason.toLowerCase().includes(search));
 
     if (historySearch.trim() !== '') {
       return matchesSearch;
@@ -420,6 +485,12 @@ export default function App() {
     const moveDate = getLocalDateString(new Date(m.timestamp));
     return moveDate === historyDate;
   });
+
+  const totalPages = Math.ceil(filteredMovements.length / itemsPerPage);
+  const paginatedMovements = filteredMovements.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   const getNFNumber = (key: string) => {
     if (key.length === 44) {
@@ -583,7 +654,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2">
-                  {filteredMovements.slice(0, 15).map(m => (
+                  {paginatedMovements.map(m => (
                     <div key={m.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group active:bg-slate-50 transition-colors">
                       <div>
                         <p className="font-black text-slate-900">{getNFNumber(m.nfe_key)}</p>
@@ -601,12 +672,40 @@ export default function App() {
                       </div>
                     </div>
                   ))}
-                  {filteredMovements.length === 0 && (
+                  
+                  {paginatedMovements.length === 0 && (
                     <div className="py-12 text-center space-y-2">
                       <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
                         <Search size={24} className="text-slate-300" />
                       </div>
                       <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Nenhum registro encontrado</p>
+                      {historyDate && <p className="text-slate-300 text-[10px] font-bold uppercase">Para a data: {historyDate.split('-').reverse().join('/')}</p>}
+                    </div>
+                  )}
+
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="pt-4 flex items-center justify-between">
+                      <button 
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="p-2 rounded-xl bg-slate-100 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <ChevronRight size={18} className="rotate-180" />
+                      </button>
+                      
+                      <div className="flex flex-col items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Página</span>
+                        <span className="text-xs font-black text-brand-600">{currentPage} de {totalPages}</span>
+                      </div>
+
+                      <button 
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="p-2 rounded-xl bg-slate-100 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <ChevronRight size={18} />
+                      </button>
                     </div>
                   )}
                 </div>
