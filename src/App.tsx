@@ -183,30 +183,13 @@ export default function App() {
     setLoading(true);
     try {
       let q;
-      const search = historySearch.trim();
-      if (search !== '') {
-        if (search.length === 44 && /^\d+$/.test(search)) {
-          // Exact NFe Key search
-          q = query(
-            collection(db, 'normagate_movimentacoes'), 
-            where('nfe_key', '==', search),
-            orderBy('timestamp', 'desc')
-          );
-        } else if (/^\d+$/.test(search) && search.length <= 9) {
-          // Exact NF Number search (using the new field)
-          q = query(
-            collection(db, 'normagate_movimentacoes'), 
-            where('nf_number', '==', search),
-            orderBy('timestamp', 'desc')
-          );
-        } else {
-          // Global search (increased limit to 1000 for better reach)
-          q = query(
-            collection(db, 'normagate_movimentacoes'), 
-            orderBy('timestamp', 'desc'), 
-            limit(1000)
-          );
-        }
+      if (historySearch.trim() !== '') {
+        // Global search (limited to 500 for performance)
+        q = query(
+          collection(db, 'normagate_movimentacoes'), 
+          orderBy('timestamp', 'desc'), 
+          limit(500)
+        );
       } else {
         // Specific date search
         // We need to cover the full day from 00:00:00 to 23:59:59
@@ -229,7 +212,6 @@ export default function App() {
         return {
           id: doc.id,
           nfe_key: d.nfe_key,
-          nf_number: d.nf_number,
           operation_type: d.operation_type,
           status: d.status,
           reason: d.reason,
@@ -428,11 +410,9 @@ export default function App() {
       // But here we'll just process them as requested.
       
       for (const key of nfe_keys) {
-        const nf_number = key.length === 44 ? key.slice(25, 34).replace(/^0+/, '') : key;
         const newDocRef = doc(movementsCol);
         batch.set(newDocRef, {
           nfe_key: key,
-          nf_number: nf_number,
           operation_type: type,
           status: formData.status,
           reason: formData.reason || null,
@@ -465,18 +445,12 @@ export default function App() {
   );
 
   const filteredMovements = movements.filter(m => {
-    const search = historySearch.toLowerCase();
-    const formattedNF = getNFNumber(m.nfe_key).toLowerCase();
-    const rawNF = formattedNF.replace('nf ', '');
-
     const matchesSearch = 
-      m.nfe_key.toLowerCase().includes(search) ||
-      formattedNF.includes(search) ||
-      rawNF.includes(search) ||
-      m.vehicle_plate.toLowerCase().includes(search) ||
-      (m.vehicle_model && m.vehicle_model.toLowerCase().includes(search)) ||
-      (m.driver_name && m.driver_name.toLowerCase().includes(search)) ||
-      (m.reason && m.reason.toLowerCase().includes(search));
+      m.nfe_key.toLowerCase().includes(historySearch.toLowerCase()) ||
+      m.vehicle_plate.toLowerCase().includes(historySearch.toLowerCase()) ||
+      (m.vehicle_model && m.vehicle_model.toLowerCase().includes(historySearch.toLowerCase())) ||
+      (m.driver_name && m.driver_name.toLowerCase().includes(historySearch.toLowerCase())) ||
+      (m.reason && m.reason.toLowerCase().includes(historySearch.toLowerCase()));
 
     if (historySearch.trim() !== '') {
       return matchesSearch;
