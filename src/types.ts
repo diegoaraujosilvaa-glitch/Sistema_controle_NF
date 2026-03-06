@@ -7,6 +7,7 @@ export interface Vehicle {
 export interface Movement {
   id: number | string;
   nfe_key: string;
+  nf_number?: string;
   operation_type: 'Entrada' | 'Saída';
   status: 'Concluída' | 'Retorno ao CD' | 'Recusada' | 'Saída por Recusa';
   reason?: string;

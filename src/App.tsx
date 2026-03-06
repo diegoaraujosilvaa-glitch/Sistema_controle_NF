@@ -164,7 +164,11 @@ export default function App() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (loginForm.username.toUpperCase() === 'PORTARIA' && loginForm.password === 'portaria.av') {
+    const user = loginForm.username.toUpperCase();
+    const pass = loginForm.password;
+
+    if ((user === 'PORTARIA' && pass === 'portaria.av') || 
+        (user === 'PREVENCAO.LOJA' && pass === 'prevencao.loja')) {
       setIsAuthenticated(true);
       setLoginError(false);
       playSound('success');
