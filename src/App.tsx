@@ -51,6 +51,7 @@ export default function App() {
   const [errorType, setErrorType] = useState<'missing_plate' | 'missing_keys' | 'other' | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [manualPlate, setManualPlate] = useState('');
   const [historySearch, setHistorySearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -314,6 +315,16 @@ export default function App() {
   const addKeyToBatch = async (key: string) => {
     const trimmed = key.trim();
     if (!trimmed) return;
+
+    // Validação de formato: 44 dígitos numéricos
+    if (trimmed.length !== 44 || !/^\d+$/.test(trimmed)) {
+      setError('A chave de acesso deve ter exatamente 44 dígitos numéricos.');
+      setErrorType('other');
+      setShowErrorModal(true);
+      setCurrentScan('');
+      return;
+    }
+
     if (batchKeys.some(item => item.key === trimmed)) {
       setError('Esta nota já está na lista do lote.');
       setErrorType('other');
@@ -379,6 +390,8 @@ export default function App() {
   };
 
   const handleSubmit = async (type: OperationType) => {
+    if (isSubmitting) return;
+    
     setError(null);
     setErrorType(null);
     setSuccess(null);
@@ -406,6 +419,7 @@ export default function App() {
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const batch = writeBatch(db);
       const movementsCol = collection(db, 'normagate_movimentacoes');
@@ -440,6 +454,8 @@ export default function App() {
       console.error('Error submitting batch', err);
       setError(err.message || 'Erro ao processar operação.');
       setShowErrorModal(true);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -907,16 +923,20 @@ export default function App() {
       {(activeTab === 'checkout' || activeTab === 'checkin') && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-transparent pt-10 z-20">
           <button 
-            disabled={batchKeys.length === 0}
+            disabled={batchKeys.length === 0 || isSubmitting}
             onClick={() => handleSubmit(activeTab === 'checkout' ? 'Saída' : 'Entrada')}
             className={`w-full py-5 rounded-2xl font-black text-lg uppercase tracking-widest shadow-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-3 ${
-              batchKeys.length > 0 
+              batchKeys.length > 0 && !isSubmitting
                 ? 'bg-brand-600 text-white shadow-brand-200' 
                 : 'bg-slate-100 text-slate-300 cursor-not-allowed'
             }`}
           >
-            {activeTab === 'checkout' ? <ArrowUpRight size={24} /> : <ArrowDownLeft size={24} />}
-            Confirmar {activeTab === 'checkout' ? 'Saída' : 'Entrada'}
+            {isSubmitting ? (
+              <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              activeTab === 'checkout' ? <ArrowUpRight size={24} /> : <ArrowDownLeft size={24} />
+            )}
+            {isSubmitting ? 'Processando...' : `Confirmar ${activeTab === 'checkout' ? 'Saída' : 'Entrada'}`}
           </button>
         </div>
       )}
